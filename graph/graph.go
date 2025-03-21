@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/tmc/langchaingo/llms"
 )
 
 // END is a special constant used to represent the end node in the graph.
@@ -29,7 +27,7 @@ type Node struct {
 
 	// Function is the function associated with the node.
 	// It takes a context and a slice of MessageContent as input and returns a slice of MessageContent and an error.
-	Function func(ctx context.Context, state []llms.MessageContent) ([]llms.MessageContent, error)
+	Function func(ctx context.Context, state interface{}) (interface{}, error)
 }
 
 // Edge represents an edge in the message graph.
@@ -41,6 +39,14 @@ type Edge struct {
 	To string
 }
 
+// ConditionalEdge represents a conditional edge in the message graph.
+type ConditionalEdge struct {
+	From          string
+	TrueTo        string
+	FalseTo       string
+	ConditionalFn func(ctx context.Context, state interface{}) (bool, error)
+}
+
 // MessageGraph represents a message graph.
 type MessageGraph struct {
 	// nodes is a map of node names to their corresponding Node objects.
@@ -48,6 +54,9 @@ type MessageGraph struct {
 
 	// edges is a slice of Edge objects representing the connections between nodes.
 	edges []Edge
+
+	// conditionalEdges is a slice of ConditionalEdge objects representing the conditional connections between nodes.
+	conditionalEdges []ConditionalEdge
 
 	// entryPoint is the name of the entry point node in the graph.
 	entryPoint string
@@ -61,7 +70,7 @@ func NewMessageGraph() *MessageGraph {
 }
 
 // AddNode adds a new node to the message graph with the given name and function.
-func (g *MessageGraph) AddNode(name string, fn func(ctx context.Context, state []llms.MessageContent) ([]llms.MessageContent, error)) {
+func (g *MessageGraph) AddNode(name string, fn func(ctx context.Context, state interface{}) (interface{}, error)) {
 	g.nodes[name] = Node{
 		Name:     name,
 		Function: fn,
@@ -73,6 +82,16 @@ func (g *MessageGraph) AddEdge(from, to string) {
 	g.edges = append(g.edges, Edge{
 		From: from,
 		To:   to,
+	})
+}
+
+// AddConditionalEdge adds a new conditional edge to the message graph between the "from" and "to" nodes.
+func (g *MessageGraph) AddConditionalEdge(from, trueTo, falseTo string, conditionalFn func(ctx context.Context, state interface{}) (bool, error)) {
+	g.conditionalEdges = append(g.conditionalEdges, ConditionalEdge{
+		From:          from,
+		TrueTo:        trueTo,
+		FalseTo:       falseTo,
+		ConditionalFn: conditionalFn,
 	})
 }
 
@@ -103,8 +122,7 @@ func (g *MessageGraph) Compile() (*Runnable, error) {
 // It returns the resulting messages and an error if any occurs during the execution.
 // Invoke executes the compiled message graph with the given input messages.
 // It returns the resulting messages and an error if any occurs during the execution.
-func (r *Runnable) Invoke(ctx context.Context, messages []llms.MessageContent) ([]llms.MessageContent, error) {
-	state := messages
+func (r *Runnable) Invoke(ctx context.Context, state interface{}) (interface{}, error) {
 	currentNode := r.graph.entryPoint
 
 	for {
@@ -130,6 +148,23 @@ func (r *Runnable) Invoke(ctx context.Context, messages []llms.MessageContent) (
 				foundNext = true
 				break
 			}
+		}
+
+		for _, conditionalEdge := range r.graph.conditionalEdges {
+			if conditionalEdge.From != currentNode {
+				continue
+			}
+			condition, err := conditionalEdge.ConditionalFn(ctx, state)
+			if err != nil {
+				return nil, fmt.Errorf("error in conditional edge from %s: %w", currentNode, err)
+			}
+			if condition {
+				currentNode = conditionalEdge.TrueTo
+			} else {
+				currentNode = conditionalEdge.FalseTo
+			}
+			foundNext = true
+			break
 		}
 
 		if !foundNext {
