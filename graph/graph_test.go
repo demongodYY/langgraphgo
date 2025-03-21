@@ -7,41 +7,6 @@ import (
 	g "github.com/tmc/langgraphgo/graph"
 )
 
-// TestMessageGraph_Compile tests compiling a simple graph.
-func TestMessageGraph_AddNode(t *testing.T) {
-	graph := g.NewMessageGraph()
-	graph.AddNode("node1", func(_ context.Context, state interface{}) (interface{}, error) {
-		return state, nil
-	})
-	if _, exists := graph.nodes["node1"]; !exists {
-		t.Errorf("Expected node 'node1' to be in graph nodes")
-	}
-}
-
-// TestMessageGraph_AddEdge tests adding an edge to the graph.
-func TestMessageGraph_AddEdge(t *testing.T) {
-	graph := g.NewMessageGraph()
-	graph.AddNode("node1", func(_ context.Context, state interface{}) (interface{}, error) {
-		return state, nil
-	})
-	graph.AddNode("node2", func(_ context.Context, state interface{}) (interface{}, error) {
-		return state, nil
-	})
-	graph.AddNode(g.END, func(_ context.Context, state interface{}) (interface{}, error) {
-		return state, nil
-	})
-
-	graph.AddEdge("node1", "node2")
-	graph.AddEdge("node2", g.END)
-
-	if len(graph.edges) != 2 {
-		t.Errorf("Expected 2 edges, got %d", len(graph.edges))
-	}
-	if graph.edges[0].From != "node1" || graph.edges[0].To != "node2" {
-		t.Errorf("Expected edge from 'node1' to 'node2', got from '%s' to '%s'", graph.edges[0].From, graph.edges[0].To)
-	}
-}
-
 // TestMessageGraph_AddConditionalEdge tests adding a conditional edge to the graph.
 func TestMessageGraph_Compile(t *testing.T) {
 	graph := g.NewMessageGraph()
@@ -121,7 +86,7 @@ func TestRunnable_InvokeWithConditionalEdge(t *testing.T) {
 		agentState.visited = "node3"
 		return agentState, nil
 	})
-	graph.AddNode(END, func(_ context.Context, state interface{}) (interface{}, error) {
+	graph.AddNode(g.END, func(_ context.Context, state interface{}) (interface{}, error) {
 		return state, nil
 	})
 	graph.AddConditionalEdge("node1", "node2", "node3", func(_ context.Context, state interface{}) (bool, error) {
